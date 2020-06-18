@@ -1,5 +1,11 @@
-#CPUE analysis
+---
+title: "Exploratory data analysis"
+author: "Elle Wibisono"
+date: "6/18/2020"
+output: html_document
+---
 
+```{r setup, include=FALSE}
 library(DBI)
 library(RPostgreSQL)
 library(ifish)
@@ -28,7 +34,7 @@ rs <- dbSendQuery(con, "SELECT b.boat_name, b.program_type, b.registration_port,
                   s.date_time <= t.tracker_end_date;")
 
 dftracker <- fetch(rs, n=-1)
-dbHasCompleted(rs)
+
 rs2 <-dbSendQuery(con, "SELECT f.oid, f.var_a, f.var_b, f.fish_genus, f.fish_species, f.lmat, f.lopt, f.linf, f.lmax, s.cm,
                   d.boat_id, d.landing_date, d.wpp1, d.first_codrs_picture_date,
                   d.expenses_fuel, d.expenses_bait, d.expenses_ice,
@@ -46,34 +52,47 @@ dffish <- fetch(rs2, n=-1)
 #load some depth information
 depth <- raster("/Users/ElleWibisono/Desktop/Dissertation/R codes/gebco.tif")
 
-#Data exploration on the prices (expenses)
 dffish <- dffish %>%setNames(make.unique(names(.))) %>%
     dplyr::filter(program_type=='Snapper') %>%
     unite(fishname, fish_genus, fish_species, sep=" ", remove= FALSE) %>%
     dplyr::mutate(weight=(var_a *(cm^var_b)/1000))
+```
+
+## Take a peek into the data (per 24 March 2020)
+
+### Comparing prices between vessels and WPPs 
+In this data dump, we have three expenses (fuel, ice, and bait). Does certain vessels need to spend more to go fishing? 
+
+
+```{r cost, include=FALSE}
+
 cost <- dffish %>% dplyr::select(expenses_fuel, expenses_bait, expenses_ice, fishing_gear, gt_estimate, boat_name, wpp1) %>%
   filter(expenses_bait >0 | expenses_fuel >0 | expenses_ice>0) %>% distinct(boat_name, .keep_all=TRUE) %>%
-  gather("cost_type", "expenses", 1:3) #%>%
- # group_by(wpp1, fishing_gear) %>%
- # summarise(mean(expenses_bait), mean(expenses_fuel), mean(expenses_ice))
-expensesplot <- ggplot()+ geom_point(data=cost, aes(x=fishing_gear, y=expenses, color=cost_type), alpha=0.7)+
-  facet_wrap(~wpp1)
-expensesBoxplot <- ggplot()+ geom_boxplot(data=cost, aes(x=fishing_gear, y=expenses))+
+  gather("cost_type", "expenses", 1:3) 
+
+```
+
+
+```{r plot costs-point, echo=FALSE}
+ggplot()+ geom_point(data=cost, aes(x=fishing_gear, y=expenses, color=cost_type), alpha=0.7)+
+ scale_x_discrete(labels=c('DL','GN','LL','MG','TR'))+
+  facet_wrap(~wpp1) 
+
+```
+
+
+###Legend 
+DL: dropline; GN: Gillnet; LL: Longline; MG: Mix-gears; TR: Trap 
+###Results: Costs are almost all the same for each fishing gear between WPPs, with notable exceptions: 
+* in WPP 718: 
++ longline: much higher fuel and ice costs 
++ gillnet: much higher fuel cost
+* in WPP 715: 
++ dropline: higher fuel and bait costs 
+
+
+```{r plot costs-boxplot, echo=FALSE}
+ggplot()+ geom_boxplot(data=cost, aes(x=fishing_gear, y=expenses))+
+  scale_x_discrete(labels=c('DL','GN','LL','MG','TR'))+
   facet_wrap(~wpp1 + cost_type)
-
-catchweight <- dffish %>% group_by(landing_id, fishname) %>%
-  mutate(totalweight=sum(weight))
-joindf <- ifish::catch_location(dffish, dftracker, depthraster=depth)
-joindf <- joindf %>% group_by(landing_id, fishname) %>%
-  mutate(totalweight=sum(weight))
-fishing <- fishing_grounds(dftracker, depth)
-
-#Filter dataframe for just one species for now, set latlong as sf object 
-Abrevis <- dffish %>% filter(fishname=='Atrobucca brevis')
-Abrevis_sf <-  st_as_sf(Abrevis, coords=c('longitude', 'latitude'))
-Abrevis_sf  <- st_set_crs(Abrevis_sf , "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-
-#Create grid across the EEZ 
-
-
-
+```
