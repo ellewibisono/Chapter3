@@ -1,4 +1,4 @@
-# Dissertation: Chapter3
+# Dissertation: Chapter 3
 
 Data Analysis and preliminary results of chapter 3 of the Indonesian deep-water snapper and grouper fishery.
 This chapter focuses on a spatially explicit standardization of the CPUE (Catch per Unit Effort) of the top catch species. 
