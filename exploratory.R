@@ -9,6 +9,16 @@ library(data.table)
 library(tidyr)
 library(ggplot2)
 library(raster)
+library(ncdf4)
+library(raster)
+library(ggmap)
+library(rgdal)
+library(rgeos)
+library(maptools)
+library(rmapshaper)
+library(sf)
+library(spatialEco)
+
 #Load database as dfifsh and dftracker
 m <- dbDriver("PostgreSQL")
 con <- dbConnect(m,host='localhost', port='5432',user="postgres", password="fishy", dbname="ifish_03242020")
@@ -45,12 +55,21 @@ dffish <- fetch(rs2, n=-1)
 
 #load some depth information
 depth <- raster("/Users/ElleWibisono/Desktop/Dissertation/R codes/gebco.tif")
+# Read the shape file with WPP boundaries
+WPP <- readOGR(dsn="/Users/ElleWibisono/Desktop/Dissertation/R codes/GIS",layer="WPP_boundaries")
+eez <- st_read('/Users/ellewibisono/Desktop/Dissertation/GearSelectivity/Rcode/eez/eez.shp')
+idn <- getData('GADM', country = 'idn', level = 0)
+#convert into simple features 
+idn <- ms_simplify(idn) %>% st_as_sf(idn)
+WPP_sf2 <- rmapshaper::ms_simplify(WPP) %>% st_as_sf()
+eez <- ms_simplify(eez) %>% st_as_sf()
 
-#Data exploration on the prices (expenses)
 dffish <- dffish %>%setNames(make.unique(names(.))) %>%
     dplyr::filter(program_type=='Snapper') %>%
     unite(fishname, fish_genus, fish_species, sep=" ", remove= FALSE) %>%
     dplyr::mutate(weight=(var_a *(cm^var_b)/1000))
+
+#Data exploration on the prices (expenses)
 cost <- dffish %>% dplyr::select(expenses_fuel, expenses_bait, expenses_ice, fishing_gear, gt_estimate, boat_name, wpp1) %>%
   filter(expenses_bait >0 | expenses_fuel >0 | expenses_ice>0) %>% distinct(boat_name, .keep_all=TRUE) %>%
   gather("cost_type", "expenses", 1:3) #%>%
@@ -69,11 +88,20 @@ joindf <- joindf %>% group_by(landing_id, fishname) %>%
 fishing <- fishing_grounds(dftracker, depth)
 
 #Filter dataframe for just one species for now, set latlong as sf object 
-Abrevis <- dffish %>% filter(fishname=='Atrobucca brevis')
+Abrevis <- joindf %>% filter(fishname=='Atrobucca brevis')
 Abrevis_sf <-  st_as_sf(Abrevis, coords=c('longitude', 'latitude'))
 Abrevis_sf  <- st_set_crs(Abrevis_sf , "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 
 #Create grid across the EEZ 
+grid <- create_grid(eez)
+
+#Intersect grid and points (fishing coordinates)
+Abrevis_intersect <- point.in.poly(Abrevis_sf, grid, sp=FALSE) #Points in the same grid have the same ID number 
+#Compute CPUE per grid 
+Abrevis_CPUE <- Abrevis_intersect %>% mutate(year=year(first_codrs_picture_date.x)) %>%
+                                               group_by(ID, year) %>% 
+  mutate(CPUE=n()/sum(distance))
+
 
 
 
